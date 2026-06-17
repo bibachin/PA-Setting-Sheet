@@ -56,7 +56,6 @@ button.btn-sec:hover{background:#f5f5f5}
   .header{flex-direction:column;align-items:flex-start}
 }
 </style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body>
 <div class="app">
@@ -302,22 +301,17 @@ function switchTab(t){
   if(t==='stage') setTimeout(function(){resizeCanvas();drawStage()},50);
 }
 
-var PARTS=['Gt.','Ba.','Dr.','Vo.','Key.','その他'];
+var PARTS=['Gt.','Ba.','Dr.','Vo.','Key.'];
 
 function renderMembers(){
   document.getElementById('members-list').innerHTML=members.map(function(m,i){
-    var knownParts=['Gt.','Ba.','Dr.','Vo.','Key.'];
-    // ドットなしで入力された場合も既知パートとして扱う
-    var normalizedPart=m.part;
-    if(m.part && !m.part.endsWith('.') && knownParts.indexOf(m.part+'.')!==-1){
-      normalizedPart=m.part+'.';
-      members[i].part=normalizedPart;
-    }
-    var isOther = m.isOther || (knownParts.indexOf(normalizedPart) === -1 && normalizedPart !== '');
-    var selVal = isOther ? 'その他' : (m.part || 'Vo.');
+    // PARTSに含まれていればプリセット、それ以外はその他
+    var isOther = PARTS.indexOf(m.part) === -1;
+    var selVal = isOther ? 'その他' : m.part;
     var opts = PARTS.map(function(p){
       return '<option value="'+p+'"'+(selVal===p?' selected':'')+'>'+p+'</option>';
     }).join('');
+    opts += '<option value="その他"'+(isOther?' selected':'')+'>その他</option>';
     var customInput = isOther
       ? '<input id="part-custom-'+i+'" value="'+esc(m.part)+'" oninput="members['+i+'].part=this.value" placeholder="例：Sax. / Tp. / Cho." style="margin-top:5px;width:100%;font-size:13px;border:1px solid #ddd;border-radius:6px;padding:5px 8px;font-family:inherit;">'
       : '';
@@ -337,19 +331,17 @@ function renderMembers(){
 function onPartChange(sel, i){
   var val = sel.value;
   if(val === 'その他'){
-    members[i].isOther = true;
     members[i].part = '';
     renderMembers();
     var inp = document.getElementById('part-custom-'+i);
     if(inp) inp.focus();
   } else {
-    members[i].isOther = false;
     members[i].part = val;
     renderMembers();
   }
 }
 
-function addMember(){members.push({name:'',part:'Vo.',hn:'',contact:'',isOther:false});renderMembers()}
+function addMember(){members.push({name:'',part:'Vo.',hn:'',contact:''});renderMembers()}
 
 function autoResize(el){el.style.height='auto';el.style.height=el.scrollHeight+'px';}
 
@@ -1157,9 +1149,10 @@ function setAll(d){
   sv('own-gear',d.gear);sv('live-note',d.note);sv('stage-note',d.stageNote);
   sv('pa-memo',d.paMemo);sv('iem-note',d.iemNote);
   members=(d.members||[{name:'',part:'Vo.',contact:''}]).map(function(m){
-    // isOtherフラグを正規化（PARTS既定値に一致するかで再判定）
-    var knownParts=['Gt.','Ba.','Dr.','Vo.','Key.'];
-    m.isOther = knownParts.indexOf(m.part) === -1 && m.part !== '';
+    // ドットなしの旧データを補正（例: 'Gt' → 'Gt.'）
+    if(m.part && !m.part.endsWith('.') && ['Gt','Ba','Dr','Vo','Key'].indexOf(m.part)!==-1){
+      m.part = m.part + '.';
+    }
     return m;
   });
   songs=d.songs||[];chs=d.chs||[];monitors=d.monitors||[];
@@ -1317,39 +1310,27 @@ function exportPDF(){
 
   var filename=(d.band||'PAシート')+'_'+(d.date||'').replace(/-/g,'')+'_PAsheet.pdf';
 
-  if(typeof html2pdf==='undefined'){
-    fallbackBlob(html,filename);
-    return;
+  var blob=new Blob([html],{type:'text/html;charset=utf-8'});
+  var url=URL.createObjectURL(blob);
+  var win=window.open(url,'_blank');
+  if(win){
+    win.onload=function(){
+      setTimeout(function(){
+        win.document.title=filename;
+        win.print();
+        setTimeout(function(){URL.revokeObjectURL(url);},30000);
+      },600);
+    };
+    showToast('📄 印刷ダイアログが開きます。「PDFに保存」を選んでください');
+  } else {
+    // ポップアップブロックされた場合はaタグでダウンロード
+    var a=document.createElement('a');
+    a.href=url; a.download=filename.replace('.pdf','.html');
+    a.target='_blank';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){URL.revokeObjectURL(url);},10000);
+    showToast('HTMLファイルをダウンロードしました。ブラウザで開いてCtrl+Pで印刷→PDFに保存してください');
   }
-
-  showToast('📄 PDF生成中...');
-
-  // html2pdfに直接HTML文字列を渡す
-  var opt={
-    margin:[8,6,8,6],
-    filename:filename,
-    image:{type:'jpeg',quality:0.97},
-    html2canvas:{scale:2,useCORS:true,logging:false},
-    jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},
-    pagebreak:{mode:'css'}
-  };
-
-  // 一時divにHTMLをパースして渡す
-  var tmp=document.createElement('div');
-  tmp.style.cssText='position:fixed;left:-9999px;top:0;width:190mm;background:#fff;';
-  tmp.innerHTML=html;
-  document.body.appendChild(tmp);
-
-  html2pdf().set(opt).from(tmp).save()
-    .then(function(){
-      document.body.removeChild(tmp);
-      showToast('✅ PDFをダウンロードしました（ダウンロードフォルダを確認してください）');
-    })
-    .catch(function(e){
-      document.body.removeChild(tmp);
-      showToast('PDF生成に失敗しました。ブラウザのタブ方式で開きます');
-      fallbackBlob(html,filename);
-    });
 }
 
 function fallbackBlob(html, filename){
