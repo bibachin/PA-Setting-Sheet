@@ -164,6 +164,7 @@ button.btn-sec:hover{background:#f5f5f5}
           </tr></thead>
           <tbody id="sl-rows"></tbody>
         </table>
+      <div id="setlist-total" style="text-align:right;font-size:12px;color:#555;padding:6px 4px 2px;border-top:1px solid #eee;margin-top:2px;"></div>
       </div>
       <div style="display:flex;gap:6px">
         <button class="add-btn" style="flex:1" onclick="addSong()">＋ 曲を追加</button>
@@ -373,6 +374,21 @@ function renderSetlist(){
       +'</tr>';
   }).join('');
   setTimeout(resizeAllTextareas,0);
+  // TOTAL時間を計算
+  var totalSec=0, hasTime=false;
+  songs.forEach(function(s){
+    var m=s.dur&&s.dur.match(/^(\d+):(\d{2})$/);
+    if(m){ totalSec+=parseInt(m[1])*60+parseInt(m[2]); hasTime=true; }
+  });
+  var totalEl=document.getElementById('setlist-total');
+  if(totalEl){
+    if(hasTime){
+      var tm=Math.floor(totalSec/60), ts=totalSec%60;
+      totalEl.innerHTML='<b>TOTAL：'+tm+'分'+('0'+ts).slice(-2)+'秒</b>　（MC含む）';
+    } else {
+      totalEl.innerHTML='';
+    }
+  }
 }
 function addSong(){songs.push({mc:false,artist:'',title:'',dur:'',tempo:'ミドル',light:'お任せします',note:''});renderSetlist();resizeAllTextareas();}
 function addMC(){songs.push({mc:true,artist:'',title:'MC',dur:'2:00',tempo:'',light:'お任せします',note:''});renderSetlist();resizeAllTextareas();}
@@ -1263,6 +1279,13 @@ function exportPDF(){
     +'<th style="width:20px">#</th><th style="width:70px">アーティスト</th><th>曲名</th>'
     +'<th style="width:40px">時間</th><th style="width:50px">テンポ</th><th style="width:70px">照明</th><th>備考</th>'
     +'</tr></thead><tbody>'+slRows+'</tbody></table>'
+    +(function(){
+      var totalSec=0,hasTime=false;
+      d.songs.forEach(function(s){var m=s.dur&&s.dur.match(/^(\d+):(\d{2})$/);if(m){totalSec+=parseInt(m[1])*60+parseInt(m[2]);hasTime=true;}});
+      if(!hasTime) return '';
+      var tm=Math.floor(totalSec/60),ts=totalSec%60;
+      return '<div style="text-align:right;font-size:8px;color:#555;padding:3px 0 4px;border-top:0.5px solid #ddd;"><b>TOTAL：'+tm+'分'+('0'+ts).slice(-2)+'秒</b>（MC含む）</div>';
+    })()
     +(d.paMemo?'<div class="nb">'+h(d.paMemo)+'</div>':'')
     // ===== ステージ + CH（2カラム） =====
     +'<div class="two">'
